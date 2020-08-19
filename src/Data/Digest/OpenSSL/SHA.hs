@@ -36,7 +36,7 @@ sha256 = unsafePerformIO . hashWith c_EVP_sha256
 -- | General purpose digest function wrapper for OpenSSL.
 hashWith :: IO (Ptr EVP_MD) -> [Word8] -> IO [Word8]
 hashWith hf bs =
-  bracket c_EVP_MD_CTX_create c_EVP_MD_CTX_destroy $ \ evp_md_ctx ->
+  bracket c_EVP_MD_CTX_new c_EVP_MD_CTX_free $ \ evp_md_ctx ->
   withArrayLen (map (toEnum . fromEnum) bs) $ \ len arr -> do
     h <- hf
     _ <- c_EVP_DigestInit_ex  evp_md_ctx h nullPtr
@@ -51,11 +51,11 @@ hashWith hf bs =
 
 
 
-foreign import ccall unsafe "openssl/evp.h EVP_MD_CTX_create"
-  c_EVP_MD_CTX_create :: IO (Ptr EVP_MD_CTX)
+foreign import ccall unsafe "openssl/evp.h EVP_MD_CTX_new"
+  c_EVP_MD_CTX_new :: IO (Ptr EVP_MD_CTX)
 
-foreign import ccall unsafe "openssl/evp.h EVP_MD_CTX_destroy"
-  c_EVP_MD_CTX_destroy :: Ptr EVP_MD_CTX -> IO ()
+foreign import ccall unsafe "openssl/evp.h EVP_MD_CTX_free"
+  c_EVP_MD_CTX_free :: Ptr EVP_MD_CTX -> IO ()
 
 foreign import ccall unsafe "openssl/evp.h EVP_DigestInit_ex"
   c_EVP_DigestInit_ex :: Ptr EVP_MD_CTX -> Ptr EVP_MD -> Ptr () -> IO CInt

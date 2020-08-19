@@ -63,10 +63,10 @@ unroll  = reverse . unfoldr step
 withDH :: DHParams -> a -> (Ptr DHParams -> IO a) -> IO a
 withDH ps a f = c_DH_new >>= \ptr -> if ptr == nullPtr
   then return a
-  else do bin2bn (dhPrivateKey ps)       >>= (#poke DH, priv_key) ptr
-          bin2bn (dhPublicKey  ps)       >>= (#poke DH, pub_key)  ptr
-          bin2bn (unroll $ dhModulus ps) >>= (#poke DH, p)        ptr
-          bin2bn (unroll $ toInteger $ dhGenerator ps) >>= (#poke DH, g) ptr
+  else do bin2bn (dhPrivateKey ps)       >>= c_DH_set_priv ptr
+          bin2bn (dhPublicKey  ps)       >>= c_DH_set_pub  ptr
+          bin2bn (unroll $ dhModulus ps) >>= c_DH_set_p  ptr
+          bin2bn (unroll $ toInteger $ dhGenerator ps) >>= c_DH_set_g ptr
           res <- f ptr
           c_DH_free ptr
           return res
@@ -74,10 +74,10 @@ withDH ps a f = c_DH_new >>= \ptr -> if ptr == nullPtr
 
 dhToDHParams :: Ptr DHParams -> IO DHParams
 dhToDHParams ptr = do
-  privKey <- bn2bin =<< (#peek DH, priv_key) ptr
-  pubKey  <- bn2bin =<< (#peek DH, pub_key)  ptr
-  p       <- bn2bin =<< (#peek DH, p)        ptr
-  g       <- bn2bin =<< (#peek DH, g)        ptr
+  privKey <- bn2bin =<< c_DH_get0_privkey ptr
+  pubKey  <- bn2bin =<< c_DH_get0_pubkey  ptr
+  p       <- bn2bin =<< c_DH_get0_p       ptr
+  g       <- bn2bin =<< c_DH_get0_g       ptr
   return $ DHParams { dhPrivateKey = privKey
                     , dhPublicKey  = pubKey
                     , dhGenerator  = fromInteger $ roll g
@@ -101,8 +101,8 @@ newDHParams len gen = do
 generateKey :: Modulus -> Generator -> IO (Maybe DHParams)
 generateKey p g = c_DH_new >>= \ptr -> if ptr == nullPtr
   then return Nothing
-  else do bin2bn (unroll p)             >>= (#poke DH, p) ptr
-          bin2bn (unroll (toInteger g)) >>= (#poke DH, g) ptr
+  else do bin2bn (unroll p)             >>= c_DH_set_p ptr
+          bin2bn (unroll (toInteger g)) >>= c_DH_set_g ptr
           res <- c_DH_generate_key ptr
           case res of
             1 -> do ps <- dhToDHParams ptr
@@ -204,3 +204,30 @@ foreign import ccall unsafe "openssl/bn.h BN_free"
   c_BN_free :: Ptr BIGNUM -> IO ()
 foreign import ccall unsafe "openssl/bn.h BN_num_bits"
   c_BN_num_bits :: Ptr BIGNUM -> IO CInt
+foreign import ccall unsafe "openssl/dh.h DH_get0_priv_key"
+  c_DH_get0_privkey :: Ptr DHParams -> IO (Ptr BIGNUM)
+foreign import ccall unsafe "openssl/dh.h DH_get0_pub_key"
+  c_DH_get0_pubkey :: Ptr DHParams -> IO (Ptr BIGNUM)
+foreign import ccall unsafe "openssl/dh.h DH_get0_p"
+  c_DH_get0_p :: Ptr DHParams -> IO (Ptr BIGNUM)
+foreign import ccall unsafe "openssl/dh.h DH_get0_g"
+  c_DH_get0_g :: Ptr DHParams -> IO (Ptr BIGNUM)
+foreign import ccall unsafe "openssl/dh.h DH_get0_q"
+  c_DH_get0_q :: Ptr DHParams -> IO (Ptr BIGNUM)
+foreign import ccall unsafe "openssl/dh.h DH_set0_pqg"
+  c_DH_set_pqg :: Ptr DHParams -> Ptr BIGNUM -> Ptr BIGNUM -> Ptr BIGNUM -> IO Int
+c_DH_set_p :: Ptr DHParams -> Ptr BIGNUM -> IO Int
+c_DH_set_p d x = c_DH_set_pqg d x nullPtr nullPtr
+c_DH_set_q :: Ptr DHParams -> Ptr BIGNUM -> IO Int
+c_DH_set_q d x = c_DH_set_pqg d nullPtr x nullPtr
+c_DH_set_g :: Ptr DHParams -> Ptr BIGNUM -> IO Int
+c_DH_set_g d x = c_DH_set_pqg d nullPtr nullPtr x
+
+foreign import ccall unsafe "openssl/dh.h DH_set0_key"
+  c_DH_set_key :: Ptr DHParams -> Ptr BIGNUM -> Ptr BIGNUM -> IO ()
+
+c_DH_set_pub :: Ptr DHParams -> Ptr BIGNUM -> IO ()
+c_DH_set_pub d x = c_DH_set_key d x nullPtr
+
+c_DH_set_priv :: Ptr DHParams -> Ptr BIGNUM -> IO ()
+c_DH_set_priv d x = c_DH_set_key d nullPtr x
